@@ -135,3 +135,15 @@ def test_app_folder_is_beside_a_single_file_build(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "executable", str(exe))
     assert st.app_folder() == (tmp_path / "Downloads").resolve()
+
+
+def test_model_choice_is_remembered(tmp_path):
+    store = make_store(tmp_path)
+    s = store.load()
+    assert s.model == "" and s.load_model_on_start is True
+    s.model = "large-v3"
+    s.load_model_on_start = False
+    store.save(s)
+    loaded = store.load()
+    assert loaded.model == "large-v3"
+    assert loaded.load_model_on_start is False

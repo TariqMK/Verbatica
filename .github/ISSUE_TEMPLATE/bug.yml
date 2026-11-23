@@ -1,0 +1,37 @@
+name: Bug report
+description: Something isn't working right
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you see, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How can we make it happen again?
+      placeholder: |
+        1. Added a 40-minute interview.m4a to the queue
+        2. Chose the large-v3 model and selected Transcribe
+        3. The row showed Failed at about 60%
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Verbatica version
+      description: In Settings, next to Check for updates
+      placeholder: e.g. 2.0.2
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: e.g. Windows 11, macOS 26.1, Ubuntu 24.04
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Screenshots or a screen recording help a lot. The log file helps too (Help > View Logs). You can drag them in here.

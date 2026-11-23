@@ -218,3 +218,59 @@ def test_self_test_with_real_faster_whisper():
     import pytest
     pytest.importorskip("faster_whisper")
     assert app.self_test() == 0
+
+
+def fake_downloaded_model(window, name):
+    """Lay out a model folder with files of the right sizes (contents are not checked here)."""
+    from verbatica import models
+    folder = models.model_folder(window.settings.models_dir, name)
+    folder.mkdir(parents=True)
+    for file_name, size, _ in models.MODELS[name].files:
+        with open(folder / file_name, "wb") as f:
+            f.truncate(size)  # sparse file: no real disk space used
+
+
+def test_loaded_model_is_selected_again_on_the_next_start(tmp_path):
+    window = make_window(tmp_path)
+    window.model_ready(FakeModel(), "large-v3")
+    window = make_window(tmp_path)
+    assert window.model_combo.currentData() == "large-v3"
+
+
+def test_without_a_saved_choice_the_largest_downloaded_model_is_selected(tmp_path):
+    window = make_window(tmp_path)
+    fake_downloaded_model(window, "small")
+    fake_downloaded_model(window, "large-v3")
+    window = make_window(tmp_path)
+    assert window.model_combo.currentData() == "large-v3"
+    assert window.load_model_btn.text() == "Load"
+
+
+def test_with_nothing_downloaded_the_default_model_is_selected(tmp_path):
+    window = make_window(tmp_path)
+    assert window.model_combo.currentData() == "medium"
+
+
+def test_downloaded_model_loads_on_start_unless_turned_off(tmp_path, monkeypatch):
+    started = []
+    monkeypatch.setattr(app.MainWindow, "start_model_worker",
+                        lambda self, name, replace_existing: started.append(name))
+    window = make_window(tmp_path)
+    window.load_model_on_start()
+    assert started == []  # nothing downloaded: never downloads on its own
+    fake_downloaded_model(window, "small")
+    window = make_window(tmp_path)
+    window.load_model_on_start()
+    assert started == ["small"]
+    window.settings.load_model_on_start = False
+    window.load_model_on_start()
+    assert started == ["small"]
+
+
+def test_load_on_start_setting_is_in_the_settings_window(tmp_path):
+    window = make_window(tmp_path)
+    window.show_settings()
+    box = window.settings_window.load_on_start_box
+    assert box.isChecked()
+    box.setChecked(False)
+    assert make_window(tmp_path).settings.load_model_on_start is False

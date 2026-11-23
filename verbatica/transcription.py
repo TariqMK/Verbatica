@@ -3,6 +3,7 @@ and subtitle files, without ever overwriting an existing result."""
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 from datetime import datetime
@@ -139,6 +140,9 @@ def transcribe_file(model, file_path, on_progress, should_cancel, on_audio=lambd
     return {"text": "".join(s["text"] for s in collected), "segments": collected}
 
 
+log = logging.getLogger(__name__)
+
+
 class TranscriptionWorker(QThread):
     """Transcribes `files` in order. Per-file signals carry the file's index in `files`."""
 
@@ -197,12 +201,16 @@ class TranscriptionWorker(QThread):
                 self.save_outputs(result, output_base)
 
                 successful_files += 1
+                log.info("%s: %d words in %.1f s, saved as %s (%s)", file_name, word_count, file_duration,
+                         output_base.name, " ".join(self.formats))
                 self.file_complete.emit(idx, str(output_base), file_duration, word_count)
 
             except TranscriptionCancelled:
+                log.info("%s: stopped by the user", file_name)
                 break
 
             except Exception as e:
+                log.exception("%s: failed", file_name)
                 self.errors.append((file_name, str(e)))
                 self.error.emit(idx, file_name, str(e))
 
@@ -212,6 +220,9 @@ class TranscriptionWorker(QThread):
             self.write_error_log()
 
         total_duration = time.time() - start_time
+        log.info("Batch %s: %d of %d done, %d failed, %d words, %.1f s",
+                 "stopped" if self.is_cancelled else "finished", successful_files, total_files,
+                 len(self.errors), total_words, total_duration)
         self.all_complete.emit(total_duration, total_words, successful_files,
                                len(self.errors), self.is_cancelled)
 
@@ -241,6 +252,7 @@ class TranscriptionWorker(QThread):
                     f.write(f"Error: {error}\n")
                     f.write("-" * 70 + "\n\n")
         except Exception as e:
+            log.warning("Could not write the error log in %s: %s", self.error_log_dir, e)
             self.error.emit(-1, "Error log", f"Could not write the error log: {e}")
 
     def cancel(self):

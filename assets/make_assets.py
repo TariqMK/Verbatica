@@ -7,6 +7,7 @@ Writes:
   verbatica/_icon.py           the window icon, embedded in the app as PNG data
   assets/banner.png            README banner, 1280 x 320 px drawn at 2x (2560 x 640)
   assets/social-card.png       GitHub social preview, 1280 x 640 px, GitHub's repo-card layout
+  assets/splash.png            start-up splash for the Windows and Linux builds, 480 x 240 px
 
 Sizes of 32 px and below use verbatica-small.svg; larger sizes use verbatica.svg.
 Colours come from the app's dark theme (verbatica/app.py). Change NAME or TAGLINE here only.
@@ -181,6 +182,36 @@ def make_banner() -> Path:
     return out
 
 
+def make_splash() -> Path:
+    """480 x 240 px at 1x (PyInstaller shows the splash pixel for pixel, with no 2x version).
+    Shown while a one-file build unpacks, before the window can appear."""
+    width, height = 480, 240
+    icon_px, gap = 88, 24
+    image, painter = new_canvas(width, height, QColor(BACKGROUND))
+    painter.setPen(QPen(QColor(BORDER), 1))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawRect(QRectF(0.5, 0.5, width - 1, height - 1))
+
+    name_font = font(SANS, 44, QFont.Weight.DemiBold)
+    note_font = font(SANS, 15, QFont.Weight.Normal)
+    name_m, note_m = QFontMetrics(name_font), QFontMetrics(note_font)
+    text_width = max(name_m.horizontalAdvance(NAME), note_m.horizontalAdvance("Starting…"))
+    left = (width - (icon_px + gap + text_width)) / 2
+    top = (height - icon_px) / 2
+    draw_tile(painter, QRectF(left, top, icon_px, icon_px))
+    x = left + icon_px + gap
+    painter.setFont(name_font)
+    painter.setPen(QColor(PRIMARY))
+    painter.drawText(QPointF(x - 1.5, top + 50), NAME)
+    painter.setFont(note_font)
+    painter.setPen(QColor(SECONDARY))
+    painter.drawText(QPointF(x, top + 78), "Starting…")
+    painter.end()
+    out = ROOT / "assets" / "splash.png"
+    image.save(str(out))
+    return out
+
+
 # Social card: fixed repo-card layout (same values as the make_social_card.py template).
 CARD_W, CARD_H, SAFE = 1280, 640, 80
 CARD_ICON, CARD_ICON_TOP, CARD_ICON_GAP = 168, 150, 40
@@ -250,6 +281,7 @@ def main() -> int:
     print(ROOT / "verbatica" / "_icon.py")
     print(make_banner())
     print(make_social_card(guides))
+    print(make_splash())
     return 0
 
 

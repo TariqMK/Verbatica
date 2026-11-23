@@ -2,7 +2,7 @@
 
 Verbatica turns your recordings into text and subtitle files on your own computer. Works offline. Sends no audio or text anywhere.
 
-**Contents:** [What it does](#what-it-does) · [Privacy](#privacy) · [Download](#download) · [How to use](#how-to-use) · [For developers](#for-developers)
+**Contents:** [What it does](#what-it-does) · [Privacy](#privacy) · [Download](#download) · [How to use](#how-to-use) · [Report a problem](#report-a-problem) · [For developers](#for-developers)
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="assets/screenshots/main-window-light.png">
@@ -47,10 +47,10 @@ Long silent parts are found and skipped. This saves time and stops the model fro
   <img src="assets/screenshots/models-light.png" alt="The Model menu open with six models and their sizes: tiny 75 MB, base 141 MB, small 464 MB, medium 1.4 GB, large-v2 2.9 GB and large-v3 2.9 GB" width="640">
 </picture>
 
-Choose one of six models, from tiny (75 MB) to large-v3 (2.9 GB). Larger models are more accurate, but slower, and need more memory. Each model downloads once and is checked, so a broken download is never used.
+Choose one of six models, from tiny (75 MB) to large-v3 (2.9 GB). Larger models are more accurate, but slower, and need more memory. Each model downloads once and is checked, so a broken download is never used. Verbatica remembers the model you used last and loads it again when it opens.
 
 ### Everything in one folder
-<img src="assets/screenshots/settings-dark.png" alt="The Verbatica Settings window with the models folder, the error logs folder and the Check for updates button" width="520">
+<img src="assets/screenshots/settings-dark.png" alt="The Verbatica Settings window with the models folder, the error logs folder, the option to load the last model on start, the Check for updates button, and the View Logs and Report a Problem buttons" width="520">
 
 Settings, models and error logs stay in a folder next to the app. Move the app and that folder together and everything comes with it. The window follows your system's light or dark appearance.
 
@@ -60,6 +60,8 @@ Settings, models and error logs stay in a folder next to the app. Move the app a
 - With a model downloaded, the app works with no internet connection.
 - Settings, models and error logs are stored in the `Verbatica-data` folder next to the app.
 - Transcripts are saved only in the folder you choose.
+- The app keeps a log file, `Verbatica.log`, in the `Verbatica-data` folder. It records what the app does and any errors, including file names, to help fix problems. It never leaves your computer unless you send it. To find it, select **View Logs** in Settings.
+- **Report a Problem…** opens a page on GitHub in your browser. Nothing is sent until you submit it there.
 - The app connects to the internet only when you ask, and only for two things:
   - When you select **Download** for a model, the app downloads the model files from Hugging Face (`huggingface.co`). It sends nothing except the requests for the files.
   - When you select **Check for Updates…**, the app asks GitHub (`api.github.com`) for the latest version. It sends nothing else, and nothing is downloaded.
@@ -110,6 +112,7 @@ You can run this instead:
 1. In the **Model** menu at the top of the window, choose a model.
    **Note:** Larger models are more accurate, but slower, and need more memory. The sizes are 75 MB (tiny) to 2.9 GB (large-v3).
 2. Select the button next to the menu. It shows **Download** and the size the first time, and **Load** after the model is downloaded. When the model is ready, the window shows **Loaded**.
+   **Note:** The app remembers the last model that loaded. The next time it opens, it selects that model and loads it in the background. To turn this off, clear **Load the last model when Verbatica opens** in **Settings**.
    **Note:** If a model file is damaged, the app asks before it downloads a new copy. The damaged file is replaced only after the new copy is checked. An interrupted download continues with the missing files.
 3. Next to **Save to**, select **Change…** and choose where to save the results.
 4. Next to **Formats**, select one or more of **Text**, **SRT** and **VTT**.
@@ -136,13 +139,29 @@ Open **Settings** from the app menu (macOS: **Verbatica > Settings…**, Command
 
 - **Models folder:** where downloaded models are kept.
 - **Error logs:** where the app writes a log when a file fails.
+- **Start:** **Load the last model when Verbatica opens**. On by default. The app never downloads a model on its own.
 - **Updates:** the version number and **Check for updates**.
+- **Help:** **View Logs** and **Report a Problem…**.
 
 ### Check for updates
 1. Select **Check for Updates…** in the app menu (macOS) or the **File** menu (Windows and Linux). You can also select **Check for updates** in **Settings**.
 2. Read the result. If a newer version exists, select **Open Release Page** to download it.
 
 The app checks only when you ask. It never checks on its own.
+
+### Find the log file
+The app writes what it does and any errors to `Verbatica.log` in the `Verbatica-data` folder. The file keeps about the newest 1 MB.
+
+1. Select **Help > View Logs**, or **View Logs** in **Settings**.
+2. Finder (macOS) or File Explorer (Windows) opens with the log file selected. On Linux, the `Verbatica-data` folder opens.
+
+## Report a problem
+**Note:** You need a free GitHub account to send a report.
+
+- In the app, select **Help > Report a Problem…**. A bug report opens on GitHub in your browser, with your Verbatica version and operating system filled in.
+- Or use these links: [Report a bug](https://github.com/TariqMK/Verbatica/issues/new?template=bug.yml) · [Suggest an idea](https://github.com/TariqMK/Verbatica/issues/new?template=idea.yml)
+
+Screenshots and the log file help a lot. Drag them into the report.
 
 ## For developers
 
@@ -207,7 +226,7 @@ The script writes these images to `assets/screenshots/`:
 
 The `outputs` image is drawn by the script from a made-up transcript, using the app's own Text, SRT and VTT writers. It uses a temporary data folder, so it does not read or change your settings.
 
-To rebuild the icon, banner and social card after a change to the icon or tagline, install Pillow (`pip install pillow`) and run `python assets/make_assets.py`.
+To rebuild the icon, banner, social card and start-up splash (`assets/splash.png`, shown by the Windows and Linux builds while they unpack) after a change to the icon or tagline, install Pillow (`pip install pillow`) and run `python assets/make_assets.py`.
 
 **Note:** The website in `docs/` uses copies of the icon and social card. After you run `make_assets.py`, copy `assets/icon/verbatica.svg` to `docs/icon.svg` and `assets/social-card.png` to `docs/social-card.png`.
 

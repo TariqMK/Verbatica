@@ -110,3 +110,26 @@ def test_load_failure_is_reported(tmp_path, fake_hub, fake_whisper):
     fake_whisper.WhisperModel = broken
     results = run_model_worker(tmp_path / "models")
     assert results["error"] == [("Failed to load model: unsupported model",)]
+
+
+def test_verified_files_are_not_hashed_again(tmp_path, fake_hub, fake_whisper, monkeypatch):
+    run_model_worker(tmp_path / "models")
+    hashed = []
+    real = models.file_sha256
+    monkeypatch.setattr(models, "file_sha256", lambda path: hashed.append(path.name) or real(path))
+    results = run_model_worker(tmp_path / "models")
+    assert len(results["model_loaded"]) == 1
+    assert hashed == []
+
+
+def test_a_file_changed_after_verification_is_checked_again(tmp_path, fake_hub, fake_whisper):
+    import os
+    run_model_worker(tmp_path / "models")
+    model_bin = tmp_path / "models" / "faster-whisper-tiny" / "model.bin"
+    damaged = b"X" + FILES["model.bin"][1:]  # same size, different content
+    model_bin.write_bytes(damaged)
+    stat = model_bin.stat()
+    os.utime(model_bin, ns=(stat.st_atime_ns, stat.st_mtime_ns + 5_000_000_000))
+    results = run_model_worker(tmp_path / "models")
+    assert results["model_loaded"] == []
+    assert len(results["corrupt_file"]) == 1

@@ -4,12 +4,15 @@ and loads and saves the user's settings there."""
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from verbatica.transcription import OUTPUT_FORMATS
+
+log = logging.getLogger(__name__)
 
 DATA_FOLDER_NAME = "Verbatica-data"
 # Data folder name used before the app was renamed to Verbatica. Renamed to DATA_FOLDER_NAME on first start.
@@ -38,6 +41,8 @@ class Settings:
     output_dir: str = ""
     error_log_dir: str = ""
     output_formats: list = field(default_factory=lambda: [".txt"])
+    model: str = ""  # the last model that loaded; empty until one has
+    load_model_on_start: bool = True
 
 
 class SettingsStore:
@@ -61,6 +66,8 @@ class SettingsStore:
         raw = self._read(self.file)
         if raw is None:
             raw = self._read(self.legacy_file) or {}
+            if raw:
+                log.info("No settings file; carried settings over from %s", self.legacy_file)
             if "error_log_path" in raw:
                 raw["error_log_dir"] = raw["error_log_path"]
 
@@ -72,6 +79,10 @@ class SettingsStore:
         formats = raw.get("output_formats")
         if isinstance(formats, list):
             settings.output_formats = [f for f in formats if f in OUTPUT_FORMATS] or [".txt"]
+        if isinstance(raw.get("model"), str):
+            settings.model = raw["model"]
+        if isinstance(raw.get("load_model_on_start"), bool):
+            settings.load_model_on_start = raw["load_model_on_start"]
         return settings
 
     def save(self, settings: Settings) -> None:
@@ -81,6 +92,8 @@ class SettingsStore:
             "output_dir": self._to_stored(settings.output_dir),
             "error_log_dir": self._to_stored(settings.error_log_dir),
             "output_formats": list(settings.output_formats),
+            "model": settings.model,
+            "load_model_on_start": settings.load_model_on_start,
         }
         self.data_dir.mkdir(parents=True, exist_ok=True)
         temp_file = self.file.with_name(self.file.name + ".tmp")
@@ -95,8 +108,10 @@ class SettingsStore:
             return data_dir
         try:
             old_dir.rename(data_dir)
-        except OSError:
+        except OSError as e:
+            log.warning("Could not rename %s to %s (%s); using it as it is", old_dir.name, data_dir.name, e)
             return old_dir
+        log.info("Renamed %s to %s", old_dir.name, data_dir.name)
         return data_dir
 
     def _read(self, path: Path) -> dict | None:

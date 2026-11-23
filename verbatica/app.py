@@ -5,25 +5,29 @@ separate Settings window."""
 from __future__ import annotations
 
 import base64
+import logging
 import os
 import subprocess
 import sys
+import time
 import traceback
 from pathlib import Path
 
-from PyQt6.QtCore import QSize, Qt, QThread, QUrl, pyqtSignal
+from PyQt6.QtCore import QSize, Qt, QThread, QTimer, QUrl, pyqtSignal
 from PyQt6.QtGui import QAction, QDesktopServices, QGuiApplication, QIcon, QKeySequence, QPixmap
-from PyQt6.QtWidgets import (QApplication, QDialog, QFileDialog, QFrame, QGridLayout, QHBoxLayout,
+from PyQt6.QtWidgets import (QApplication, QCheckBox, QDialog, QFileDialog, QFrame, QGridLayout, QHBoxLayout,
                              QLabel, QMainWindow, QMessageBox, QProgressBar, QPushButton, QScrollArea,
                              QStackedWidget, QVBoxLayout, QWidget)
 
-from verbatica import APP_NAME, __version__, theme, update_check
+from verbatica import APP_NAME, __version__, app_log, theme, update_check
 from verbatica._icon import ICON_PNGS
 from verbatica.models import DEFAULT_MODEL, MODEL_SIZES, MODELS, ModelDownloadWorker, is_downloaded
 from verbatica.settings import SettingsStore
 from verbatica.transcription import (AUDIO_EXTENSIONS, AUDIO_FILE_FILTER, OUTPUT_FORMATS,
                                      TranscriptionWorker, add_unique_files)
 from verbatica.widgets import ElidedLabel, FileRow, Glyph, ModelPopup, format_taken
+
+log = logging.getLogger(__name__)
 
 VERSION_TEXT = f"v{__version__}"
 
@@ -66,12 +70,20 @@ class UpdateCheckWorker(QThread):
     failed = pyqtSignal(str)
 
     def run(self):
+        start = time.perf_counter()
         try:
-            self.result.emit(update_check.check())
+            info = update_check.check()
         except update_check.UpdateError as e:
+            log.warning("Update check (api.github.com) failed after %.1f s: %s", time.perf_counter() - start, e)
             self.failed.emit(str(e))
+            return
         except Exception:
+            log.exception("Update check failed")
             self.failed.emit(f"GitHub sent an answer {APP_NAME} can't read. Try again later.")
+            return
+        log.info("Update check (api.github.com): latest %s, this is %s (%.1f s)", info.latest, __version__,
+                 time.perf_counter() - start)
+        self.result.emit(info)
 
 
 def label(text: str, name: str = "") -> QLabel:
@@ -146,14 +158,23 @@ class SettingsWindow(QDialog):
         self.logs_field = PathField(window, window.settings.error_log_dir, window.select_error_log_dir)
         grid.addWidget(self.logs_field, 3, 1)
         grid.addWidget(label("A file that fails gets a line in a log here", "caption"), 4, 1)
-        grid.setRowMinimumHeight(5, 20)
+        grid.setRowMinimumHeight(5, 16)
+
+        grid.addWidget(label("Start"), 6, 0, right)
+        self.load_on_start_box = QCheckBox("Load the last model when Verbatica opens")
+        self.load_on_start_box.setChecked(window.settings.load_model_on_start)
+        self.load_on_start_box.toggled.connect(window.set_load_model_on_start)
+        window.on_theme(self.paint_check_box)
+        grid.addWidget(self.load_on_start_box, 6, 1)
+        grid.addWidget(label("Only a model that is already downloaded", "caption"), 7, 1)
+        grid.setRowMinimumHeight(8, 20)
 
         rule = QFrame()
         rule.setObjectName("rule")
-        grid.addWidget(rule, 6, 0, 1, 2)
-        grid.setRowMinimumHeight(7, 20)
+        grid.addWidget(rule, 9, 0, 1, 2)
+        grid.setRowMinimumHeight(10, 20)
 
-        grid.addWidget(label("Updates"), 8, 0, right)
+        grid.addWidget(label("Updates"), 11, 0, right)
         row = QHBoxLayout()
         row.setSpacing(12)
         self.update_btn = button("Check for updates", slot=window.check_for_updates)
@@ -164,10 +185,32 @@ class SettingsWindow(QDialog):
         self.update_note = label("", "updateNote")
         row.addWidget(self.update_note)
         row.addStretch()
-        grid.addLayout(row, 8, 1)
-        grid.addWidget(label("One request to GitHub, only when you click", "caption"), 9, 1)
+        grid.addLayout(row, 11, 1)
+        grid.addWidget(label("One request to GitHub, only when you click", "caption"), 12, 1)
+        grid.setRowMinimumHeight(13, 16)
+
+        grid.addWidget(label("Help"), 14, 0, right)
+        help_row = QHBoxLayout()
+        help_row.setSpacing(8)
+        self.view_logs_btn = button("View Logs", slot=window.view_logs)
+        self.view_logs_btn.setToolTip(f"Show the log file in {app_log.file_manager_name()}")
+        help_row.addWidget(self.view_logs_btn)
+        self.report_btn = button("Report a Problem…", slot=window.report_problem)
+        self.report_btn.setToolTip("Opens a bug report on GitHub in your browser. You need a free GitHub account.")
+        help_row.addWidget(self.report_btn)
+        help_row.addStretch()
+        grid.addLayout(help_row, 14, 1)
+        grid.addWidget(label("The log stays on this computer unless you send it", "caption"), 15, 1)
         self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self.refresh(window)
+
+    def paint_check_box(self, t):
+        """Fusion fills the box with Base and outlines it with Window darkened by 140 %, which
+        vanishes on the dark window. Give the box a raised fill and a visible outline."""
+        palette = self.load_on_start_box.palette()
+        palette.setColor(palette.ColorRole.Base, theme.qcolor(t.raised))
+        palette.setColor(palette.ColorRole.Window, theme.qcolor(t.line_strong).lighter(140))
+        self.load_on_start_box.setPalette(palette)
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -289,7 +332,7 @@ class MainWindow(QMainWindow):
         self.model_combo = ModelPopup()
         for name in MODELS:
             self.model_combo.addItem(f"{name}  ·  {MODEL_SIZES[name].lstrip('~')}", name)
-        self.model_combo.setCurrentIndex(self.model_combo.findData(DEFAULT_MODEL))
+        self.model_combo.setCurrentIndex(self.model_combo.findData(self.initial_model()))
         self.model_combo.setAccessibleName("Model")
         self.model_combo.currentIndexChanged.connect(lambda _i: self.refresh())
         self.on_theme(lambda t: setattr(self.model_combo, "tokens", t))
@@ -443,6 +486,10 @@ class MainWindow(QMainWindow):
         queue_menu.addAction(self.clear_done_action)
         queue_menu.addAction(self.clear_action)
 
+        help_menu = menu_bar.addMenu("Help")
+        help_menu.addAction(action("Report a Problem…", self.report_problem))
+        help_menu.addAction(action("View Logs", self.view_logs))
+
     def paint_chips(self):
         for chip in self.format_checks.values():
             chip.setIcon(theme.icon("check-small", self.tokens.text) if chip.isChecked() else QIcon())
@@ -535,6 +582,7 @@ class MainWindow(QMainWindow):
         try:
             self.store.save(self.settings)
         except OSError as e:
+            log.warning("Settings not saved in %s: %s", self.store.data_dir, e)
             if self.settings_warning_shown:
                 return
             self.settings_warning_shown = True
@@ -557,6 +605,7 @@ class MainWindow(QMainWindow):
     def select_models_dir(self):
         directory = QFileDialog.getExistingDirectory(self, "Choose Models Folder", self.settings.models_dir)
         if directory:
+            log.info("Setting models folder: %s → %s", self.settings.models_dir, directory)
             self.settings.models_dir = directory
             self.save_settings()
             self.refresh()
@@ -564,6 +613,7 @@ class MainWindow(QMainWindow):
     def select_error_log_dir(self):
         directory = QFileDialog.getExistingDirectory(self, "Choose Error Log Folder", self.settings.error_log_dir)
         if directory:
+            log.info("Setting error logs folder: %s → %s", self.settings.error_log_dir, directory)
             self.settings.error_log_dir = directory
             self.save_settings()
             self.refresh()
@@ -572,17 +622,50 @@ class MainWindow(QMainWindow):
         directory = QFileDialog.getExistingDirectory(self, "Choose Where to Save Transcripts",
                                                      self.settings.output_dir)
         if directory:
+            log.info("Setting save to: %s → %s", self.settings.output_dir or "not set", directory)
             self.settings.output_dir = directory
             self.save_settings()
             self.refresh()
 
     def formats_changed(self):
-        self.settings.output_formats = [ext for ext, check in self.format_checks.items() if check.isChecked()]
+        formats = [ext for ext, check in self.format_checks.items() if check.isChecked()]
+        log.info("Setting formats: %s → %s", " ".join(self.settings.output_formats) or "none",
+                 " ".join(formats) or "none")
+        self.settings.output_formats = formats
         self.paint_chips()
         self.save_settings()
         self.refresh()
 
     # --- Model ---------------------------------------------------------------
+
+    def initial_model(self) -> str:
+        """The model to select at start: the last one that loaded, else the largest one already
+        downloaded, else the default."""
+        if self.settings.model in MODELS:
+            return self.settings.model
+        if self.settings.model:
+            log.warning("Saved model %r is unknown; choosing another", self.settings.model)
+        if self.settings.models_dir:
+            for name in reversed(list(MODELS)):  # MODELS runs from smallest to largest
+                if is_downloaded(self.settings.models_dir, name):
+                    log.info("No saved model; selected %s, the largest one downloaded", name)
+                    return name
+        return DEFAULT_MODEL
+
+    def load_model_on_start(self):
+        """Load the selected model in the background once the window is up. Never downloads."""
+        name = self.model_combo.currentData()
+        if not self.settings.load_model_on_start:
+            log.info("Model %s selected; loading on start is turned off", name)
+        elif not (self.settings.models_dir and is_downloaded(self.settings.models_dir, name)):
+            log.info("Model %s selected; not downloaded, so not loaded on start", name)
+        elif self.download_worker is None and not self.model_loaded:
+            self.start_model_worker(name, replace_existing=False)
+
+    def set_load_model_on_start(self, on: bool):
+        log.info("Setting load model on start: %s → %s", self.settings.load_model_on_start, on)
+        self.settings.load_model_on_start = on
+        self.save_settings()
 
     def download_and_load_model(self):
         if not self.settings.models_dir:
@@ -591,6 +674,9 @@ class MainWindow(QMainWindow):
         self.start_model_worker(self.model_combo.currentData(), replace_existing=False)
 
     def start_model_worker(self, model_name, replace_existing):
+        log.info("Model %s: load requested (models folder %s%s)", model_name, self.settings.models_dir,
+                 ", replacing damaged files" if replace_existing else "")
+        self.model_started_at = time.perf_counter()
         self.model_status = "Starting"
         self.download_worker = ModelDownloadWorker(model_name, self.settings.models_dir, replace_existing)
         self.download_worker.status.connect(self.update_download_status)
@@ -610,13 +696,19 @@ class MainWindow(QMainWindow):
 
     def model_ready(self, model, model_name):
         # The model was loaded in the worker thread, so the window stays responsive
+        log.info("Model %s ready in %.1f s", model_name,
+                 time.perf_counter() - getattr(self, "model_started_at", time.perf_counter()))
         self.model = model
         self.model_loaded = True
         self.loaded_model_name = model_name
+        if self.settings.model != model_name:
+            self.settings.model = model_name
+            self.save_settings()
         self.model_worker_done()
         self.refresh()
 
     def corrupt_model_file(self, model_name, model_folder):
+        log.warning("Model %s: files failed their checksum in %s; asking the user", model_name, model_folder)
         self.model_worker_done()
         self.refresh()
         reply = QMessageBox.question(
@@ -629,8 +721,11 @@ class MainWindow(QMainWindow):
         )
         if reply == QMessageBox.StandardButton.Yes:
             self.start_model_worker(model_name, replace_existing=True)
+        else:
+            log.info("Model %s: user kept the damaged files", model_name)
 
     def download_error(self, message):
+        log.error("Model not loaded: %s", message)
         self.model_worker_done()
         self.refresh()
         QMessageBox.critical(self, "Model Not Loaded", message)
@@ -657,13 +752,18 @@ class MainWindow(QMainWindow):
             self.rows_layout.insertWidget(self.rows_layout.count() - 1, row)
             self.rows.append(row)
         self.summary = f"Skipped {skipped} file{'s' if skipped != 1 else ''} already in the queue" if skipped else ""
+        log.info("Added %d file(s) to the queue (%d already there); queue has %d",
+                 len(paths) - skipped, skipped, len(self.rows))
         self.refresh()
 
     def remove_rows(self, rows):
         """Take rows out of the queue. Only the list changes: transcripts already saved stay on disk."""
         if self.worker is not None and self.worker.isRunning():
             return
-        for row in list(rows):
+        rows = list(rows)
+        if rows:
+            log.info("Removed %d file(s) from the queue", len(rows))
+        for row in rows:
             self.rows.remove(row)
             row.setParent(None)
             row.deleteLater()
@@ -731,6 +831,8 @@ class MainWindow(QMainWindow):
         self.summary = ""
         self.progress_bar.setValue(0)
 
+        log.info("Transcribe: %d file(s), model %s, formats %s, save to %s", len(pending),
+                 self.loaded_model_name, " ".join(self.settings.output_formats), self.settings.output_dir)
         self.worker = TranscriptionWorker(
             [row.path for row in pending],
             self.model,
@@ -779,9 +881,41 @@ class MainWindow(QMainWindow):
 
     def cancel_transcription(self):
         if self.worker is not None and self.worker.isRunning():
+            log.info("Stop selected")
             self.worker.cancel()
             self.cancel_btn.setEnabled(False)
             self.hint_label.setText("Stopping after this part")
+
+    # --- Help ----------------------------------------------------------------
+
+    def view_logs(self):
+        """Show the log file in the file manager. If that can't be done, show its path instead."""
+        app_log.flush()
+        path = app_log.log_file()
+        if path is not None and path.exists() and app_log.reveal(path):
+            return
+        path = path or (self.store.data_dir / app_log.LOG_FILE_NAME)
+        log.warning("View Logs could not open the file manager for %s", path)
+        box = QMessageBox(self)
+        box.setWindowTitle("View Logs")
+        box.setText(f"{APP_NAME} could not open the log file's folder.")
+        box.setInformativeText(f"The log file is here:\n{path}")
+        copy_btn = box.addButton("Copy Path", QMessageBox.ButtonRole.ActionRole)
+        box.addButton("Close", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        if box.clickedButton() is copy_btn:
+            QGuiApplication.clipboard().setText(str(path))
+
+    def report_problem(self):
+        url = app_log.report_url()
+        log.info("Report a Problem: opened the GitHub bug form in the browser")
+        QDesktopServices.openUrl(QUrl(url))
+
+    def closeEvent(self, event):
+        if self.worker is not None and self.worker.isRunning():
+            log.info("Window closed during a batch; stopping")
+            self.worker.cancel()
+        super().closeEvent(event)
 
     # --- Update check --------------------------------------------------------
 
@@ -859,6 +993,15 @@ def self_test() -> int:
     return 0
 
 
+def close_splash():
+    """Close the splash screen that Windows and Linux builds show while they unpack."""
+    try:
+        import pyi_splash  # only exists inside a PyInstaller build made with --splash
+    except ImportError:
+        return
+    pyi_splash.close()
+
+
 def main():
     if "--self-test" in sys.argv:
         # Catch everything: an uncaught error in a windowed Windows build opens a dialog and stalls CI
@@ -868,12 +1011,28 @@ def main():
             traceback.print_exc()
             code = 1
         sys.exit(code)
+    started = time.perf_counter()
+    store = SettingsStore()
+    app_log.start(store.data_dir)  # before the window, so start-up failures are logged too
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setWindowIcon(app_icon())
-    window = MainWindow()
+    window = MainWindow(store)
+    app_log.log_environment(app, changed_settings(store))
     window.show()
-    sys.exit(app.exec())
+    close_splash()
+    log.info("Window shown %.2f s after start", time.perf_counter() - started)
+    # Let the window draw first, then load the model in the background
+    QTimer.singleShot(0, window.load_model_on_start)
+    code = app.exec()
+    app_log.end_session()
+    sys.exit(code)
+
+
+def changed_settings(store: SettingsStore) -> dict:
+    """Every setting that differs from its default, for the log's session header."""
+    current, default = store.load(), store.defaults()
+    return {key: value for key, value in vars(current).items() if value != getattr(default, key)}
 
 
 if __name__ == "__main__":

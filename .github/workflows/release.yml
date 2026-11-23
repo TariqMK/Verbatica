@@ -103,14 +103,18 @@ jobs:
             target: windows-x64
             mode: --onefile
             icon: --icon assets/icon/verbatica.ico
+            # One-file builds unpack before any app code runs; the splash shows meanwhile.
+            splash: --splash assets/splash.png
           - os: macos-latest
             target: macos-arm64
             mode: --onedir # PyInstaller is dropping --onefile for macOS app bundles.
             icon: --icon assets/icon/verbatica.icns
+            splash: "" # PyInstaller has no splash on macOS; the .app starts without unpacking.
           - os: ubuntu-24.04
             target: linux-x64
             mode: --onefile
             icon: "" # Linux executables have no file icon; the app sets its window icon.
+            splash: --splash assets/splash.png
     env:
       TAG: ${{ needs.version.outputs.tag }}
       TARGET: ${{ matrix.target }}
@@ -144,7 +148,7 @@ jobs:
       - name: Build
         shell: bash
         run: >
-          pyinstaller --noconfirm ${{ matrix.mode }} --windowed ${{ matrix.icon }}
+          pyinstaller --noconfirm ${{ matrix.mode }} --windowed ${{ matrix.icon }} ${{ matrix.splash }}
           --name Verbatica --paths .
           --collect-data faster_whisper
           verbatica/__main__.py

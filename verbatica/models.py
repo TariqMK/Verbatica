@@ -5,12 +5,18 @@ verifies and loads them so the window stays responsive. Models run with faster-w
 from __future__ import annotations
 
 import hashlib
+import json
+import logging
 import os
+import time
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
 from PyQt6.QtCore import QThread, pyqtSignal
+
+log = logging.getLogger(__name__)
 
 HF_BASE = "https://huggingface.co"
 DEFAULT_MODEL = "medium"
@@ -134,18 +140,56 @@ def file_sha256(path, chunk_size: int = 1024 * 1024) -> str:
     return digest.hexdigest()
 
 
+# Records the size and modification time of each file whose checksum passed, so the next
+# load can skip hashing files that have not changed (large-v3's model.bin is 3 GB).
+VERIFIED_FILE_NAME = ".verified.json"
+
+
+def file_stamp(path: Path) -> list:
+    stat = path.stat()
+    return [stat.st_size, stat.st_mtime_ns]
+
+
+def read_verified(folder: Path) -> dict:
+    try:
+        data = json.loads((folder / VERIFIED_FILE_NAME).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def write_verified(folder: Path, info: ModelInfo) -> None:
+    """Note every file of the model as checked. Called only after all of them passed."""
+    try:
+        stamps = {name: file_stamp(folder / name) for name, _, _ in info.files}
+        (folder / VERIFIED_FILE_NAME).write_text(json.dumps(stamps), encoding="utf-8")
+    except OSError:
+        pass  # a read-only folder only means the next load checks the files again
+
+
 def check_model_files(folder: Path, info: ModelInfo, on_status=lambda message: None):
     """Return (missing, damaged): the file names that are not there, and those that are
-    there but have the wrong size or checksum."""
+    there but have the wrong size or checksum. A file unchanged since it last passed is
+    not hashed again."""
     missing, damaged = [], []
+    verified = read_verified(folder)
     for name, size, sha256 in info.files:
         path = folder / name
         if not path.exists():
             missing.append(name)
             continue
-        on_status(f"Checking {name}")
-        if path.stat().st_size != size or file_sha256(path) != sha256:
+        if path.stat().st_size != size:
             damaged.append(name)
+            continue
+        if verified.get(name) == file_stamp(path):
+            continue
+        on_status(f"Checking {name}")
+        start = time.perf_counter()
+        if file_sha256(path) != sha256:
+            log.warning("%s/%s failed its checksum", folder.name, name)
+            damaged.append(name)
+        else:
+            log.info("%s/%s checksum OK (%.1f s)", folder.name, name, time.perf_counter() - start)
     return missing, damaged
 
 
@@ -169,13 +213,17 @@ class ModelDownloadWorker(QThread):
         folder = model_folder(self.models_dir, self.model_name)
         try:
             missing, damaged = check_model_files(folder, info, self.status.emit)
+            if missing:
+                log.info("Model %s: %d file(s) missing: %s", self.model_name, len(missing), ", ".join(missing))
             if damaged and not self.replace_existing:
                 self.corrupt_file.emit(self.model_name, str(folder))
                 return
             to_download = [f for f in info.files if f[0] in missing or f[0] in damaged]
             if to_download:
                 self.download(info, folder, to_download)
+            write_verified(folder, info)
         except Exception as e:
+            log.exception("Model %s: download failed", self.model_name)
             self.error.emit(f"Download failed: {e}")
             return
 
@@ -183,8 +231,12 @@ class ModelDownloadWorker(QThread):
         try:
             from faster_whisper import WhisperModel  # imported here because it loads CTranslate2
 
+            start = time.perf_counter()
             model = WhisperModel(str(folder), device=DEVICE, compute_type=COMPUTE_TYPE)
+            log.info("Model %s loaded into memory in %.1f s (%s, %s)", self.model_name,
+                     time.perf_counter() - start, DEVICE, COMPUTE_TYPE)
         except Exception as e:
+            log.exception("Model %s: failed to load", self.model_name)
             self.error.emit(f"Failed to load model: {e}")
             return
         self.model_loaded.emit(model, self.model_name)
@@ -212,7 +264,11 @@ class ModelDownloadWorker(QThread):
                 self.status.emit(f"Downloading {downloaded / 1024 ** 2:.0f} of {total / 1024 ** 2:.0f} MB")
 
             try:
+                start = time.perf_counter()
+                log.info("Downloading %s/%s (%d bytes) from %s", info.repo, name, size,
+                         urllib.parse.urlsplit(HF_BASE).netloc or HF_BASE)
                 urllib.request.urlretrieve(file_url(info, name), str(part_path), reporthook=report_progress)
+                log.info("Downloaded %s in %.1f s", name, time.perf_counter() - start)
                 self.status.emit(f"Checking {name}")
                 if part_path.stat().st_size != size or file_sha256(part_path) != sha256:
                     raise ValueError(f"{name} arrived damaged (checksum mismatch). Try the download again.")

@@ -185,12 +185,14 @@ class FileRow(QFrame):
 
     remove_requested = pyqtSignal(object)  # self
     reveal_requested = pyqtSignal(object)  # self
+    clear_done_requested = pyqtSignal()
 
     def __init__(self, path: str, parent=None):
         super().__init__(parent)
         self.path = path
         self.state = "waiting"
         self.busy = False
+        self.queue_has_done = False  # set by the window; enables Remove Finished Files
         self.output_file = ""
         self.duration = 0.0
         self.tokens = theme.current()
@@ -341,6 +343,8 @@ class FileRow(QFrame):
             menu.addSeparator()
         remove = menu.addAction("Remove from Queue", lambda: self.remove_requested.emit(self))
         remove.setEnabled(not self.busy)
+        clear_done = menu.addAction("Remove Finished Files", self.clear_done_requested.emit)
+        clear_done.setEnabled(not self.busy and self.queue_has_done)
         return menu
 
     def contextMenuEvent(self, event):

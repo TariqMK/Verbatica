@@ -131,11 +131,16 @@ The app names each result after its source file. For example, `interview.mp3` gi
 
 - To remove one file, select **×** at the end of its row.
 - A finished file has no **×**. Right-click its row and select **Remove from Queue**.
-- To remove all finished files, select **Queue > Remove Finished Files**.
+- To remove all finished files, right-click any row and select **Remove Finished Files**. On macOS, you can also select **Queue > Remove Finished Files**.
 - To remove all files, select **Clear**.
 
 ### Settings
-Open **Settings** from the app menu (macOS: **Verbatica > Settings…**, Command-comma) or the **File** menu (Windows and Linux).
+To open **Settings**:
+
+- Select the settings button at the right end of the window's top bar.
+- Or press Ctrl+comma (Command-comma on macOS). On macOS, you can also select **Verbatica > Settings…**.
+
+Settings has these parts:
 
 - **Models folder:** where downloaded models are kept.
 - **Error logs:** where the app writes a log when a file fails.
@@ -144,7 +149,7 @@ Open **Settings** from the app menu (macOS: **Verbatica > Settings…**, Command
 - **Help:** **View Logs** and **Report a Problem…**.
 
 ### Check for updates
-1. Select **Check for Updates…** in the app menu (macOS) or the **File** menu (Windows and Linux). You can also select **Check for updates** in **Settings**.
+1. Open **Settings** and select **Check for updates**. On macOS, you can also select **Verbatica > Check for Updates…**.
 2. Read the result. If a newer version exists, select **Open Release Page** to download it.
 
 The app checks only when you ask. It never checks on its own.
@@ -152,13 +157,13 @@ The app checks only when you ask. It never checks on its own.
 ### Find the log file
 The app writes what it does and any errors to `Verbatica.log` in the `Verbatica-data` folder. The file keeps about the newest 1 MB.
 
-1. Select **Help > View Logs**, or **View Logs** in **Settings**.
+1. Open **Settings** and select **View Logs**. On macOS, you can also select **Help > View Logs**.
 2. Finder (macOS) or File Explorer (Windows) opens with the log file selected. On Linux, the `Verbatica-data` folder opens.
 
 ## Report a problem
 **Note:** You need a free GitHub account to send a report.
 
-- In the app, select **Help > Report a Problem…**. A bug report opens on GitHub in your browser, with your Verbatica version and operating system filled in.
+- In the app, open **Settings** and select **Report a Problem…** (macOS: also **Help > Report a Problem…**). A bug report opens on GitHub in your browser, with your Verbatica version and operating system filled in.
 - Or use these links: [Report a bug](https://github.com/TariqMK/Verbatica/issues/new?template=bug.yml) · [Suggest an idea](https://github.com/TariqMK/Verbatica/issues/new?template=idea.yml)
 
 Screenshots and the log file help a lot. Drag them into the report.

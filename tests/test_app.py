@@ -274,3 +274,35 @@ def test_load_on_start_setting_is_in_the_settings_window(tmp_path):
     assert box.isChecked()
     box.setChecked(False)
     assert make_window(tmp_path).settings.load_model_on_start is False
+
+
+def test_windows_and_linux_have_no_menu_bar_but_keep_shortcuts_and_settings(tmp_path, monkeypatch):
+    monkeypatch.setattr(app, "USE_MENU_BAR", False)
+    window = make_window(tmp_path)
+    assert window.menuWidget() is None  # no menu bar was created
+    shortcuts = {a.shortcut().toString() for a in window.actions()}
+    assert {"Ctrl+O", "Ctrl+Return", "Ctrl+.", "Ctrl+,"} <= shortcuts
+    window.settings_btn.click()
+    assert window.settings_window is not None and window.settings_window.isVisible()
+
+
+def test_macos_keeps_its_menus_and_the_settings_button(tmp_path, monkeypatch):
+    monkeypatch.setattr(app, "USE_MENU_BAR", True)
+    window = make_window(tmp_path)
+    menus = [a.text() for a in window.menuBar().actions()]
+    assert menus == ["File", "Queue", "Help"]
+    window.settings_btn.click()
+    assert window.settings_window.isVisible()
+
+
+def test_right_click_removes_finished_files(tmp_path):
+    from pathlib import Path
+    window = loaded_window(tmp_path, files=("a.mp3", "b.mp3"))
+    run_batch(window)  # a and b are done
+    waiting = tmp_path / "c.mp3"
+    waiting.write_text("x")
+    window.add_files([str(waiting)])
+    item = next(a for a in window.rows[-1].context_menu().actions() if a.text() == "Remove Finished Files")
+    assert item.isEnabled()
+    item.trigger()
+    assert [Path(r.path).name for r in window.rows] == ["c.mp3"]

@@ -34,4 +34,4 @@ body:
     id: extra
     attributes:
       label: Anything else?
-      description: Screenshots or a screen recording help a lot. The log file helps too (Help > View Logs). You can drag them in here.
+      description: Screenshots or a screen recording help a lot. The log file helps too (Settings > View Logs). You can drag them in here.

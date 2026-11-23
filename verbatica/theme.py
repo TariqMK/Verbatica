@@ -232,6 +232,7 @@ _ICONS = {
     "file": '<path d="M4 2h5l3 3v8.5c0 .3-.2.5-.5.5h-7a.5.5 0 0 1-.5-.5z"/><path d="M9 2v3h3"/>',
     "alert": '<circle cx="8" cy="8" r="6"/><path d="M8 5v3.5M8 11h.01"/>',
     "stop": '<circle cx="8" cy="8" r="6"/><path d="M6 6h4v4H6z"/>',
+    "sliders": '<path d="M2.5 5h6M12.5 5h1M2.5 11h1M7.5 11h6"/><circle cx="10.5" cy="5" r="1.75"/><circle cx="5.5" cy="11" r="1.75"/>',
     "chevron": '<path d="M4.5 6.5L8 10l3.5-3.5"/>',
 }
 

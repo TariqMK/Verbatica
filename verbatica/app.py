@@ -31,6 +31,11 @@ log = logging.getLogger(__name__)
 
 VERSION_TEXT = f"v{__version__}"
 
+# macOS shows menus in the system menu bar. Windows and Linux would put a menu bar inside the
+# window, so there the window has no menu bar: its commands are buttons, the right-click menu,
+# Settings and keyboard shortcuts. The Settings button in the header is on every platform.
+USE_MENU_BAR = sys.platform == "darwin"
+
 # Short names for the format chips in the footer
 FORMAT_CHIPS = {".txt": "Text", ".srt": "SRT", ".vtt": "VTT"}
 
@@ -348,6 +353,14 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.state_label)
         self.load_model_btn = button("Load", slot=self.download_and_load_model)
         layout.addWidget(self.load_model_btn)
+
+        layout.addSpacing(4)
+        self.settings_btn = button("", "icon", self.show_settings)
+        self.settings_btn.setFixedHeight(26)
+        self.settings_btn.setToolTip("Settings (⌘,)" if sys.platform == "darwin" else "Settings (Ctrl+,)")
+        self.settings_btn.setAccessibleName("Settings")
+        self.on_theme(lambda t: self.settings_btn.setIcon(theme.icon("sliders", t.text_2)))
+        layout.addWidget(self.settings_btn)
         return header
 
     def build_empty_view(self) -> QWidget:
@@ -449,7 +462,6 @@ class MainWindow(QMainWindow):
         return footer
 
     def init_menus(self):
-        menu_bar = self.menuBar()
 
         def action(text, slot, shortcut=None, role=None) -> QAction:
             item = QAction(text, self)
@@ -460,8 +472,25 @@ class MainWindow(QMainWindow):
                 item.setMenuRole(role)
             return item
 
-        file_menu = menu_bar.addMenu("File")
         self.add_action = action("Add Files…", self.select_files, QKeySequence.StandardKey.Open)
+        self.start_action = action("Transcribe", self.start_transcription, "Ctrl+Return")
+        self.cancel_action = action("Stop", self.cancel_transcription, "Ctrl+.")
+        self.clear_done_action = action("Remove Finished Files", self.clear_done_files)
+        self.clear_action = action("Remove All Files", self.clear_files)
+
+        if not USE_MENU_BAR:
+            # No menu bar: the shortcuts still work through actions on the window itself
+            shortcuts = [self.add_action, self.start_action, self.cancel_action,
+                         action("Settings", self.show_settings, "Ctrl+,"),
+                         action("Close Window", self.close, QKeySequence.StandardKey.Close),
+                         action("Quit", QApplication.quit, QKeySequence.StandardKey.Quit)]
+            for item in shortcuts:
+                item.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+                self.addAction(item)
+            return
+
+        menu_bar = self.menuBar()
+        file_menu = menu_bar.addMenu("File")
         file_menu.addAction(self.add_action)
         file_menu.addSeparator()
         # On macOS Qt moves these two into the Verbatica menu
@@ -471,15 +500,8 @@ class MainWindow(QMainWindow):
                                    QAction.MenuRole.ApplicationSpecificRole))
         file_menu.addSeparator()
         file_menu.addAction(action("Close Window", self.close, QKeySequence.StandardKey.Close))
-        if sys.platform != "darwin":
-            file_menu.addAction(action("Quit", QApplication.quit, QKeySequence.StandardKey.Quit,
-                                       QAction.MenuRole.QuitRole))
 
         queue_menu = menu_bar.addMenu("Queue")
-        self.start_action = action("Transcribe", self.start_transcription, "Ctrl+Return")
-        self.cancel_action = action("Stop", self.cancel_transcription, "Ctrl+.")
-        self.clear_done_action = action("Remove Finished Files", self.clear_done_files)
-        self.clear_action = action("Remove All Files", self.clear_files)
         for item in (self.start_action, self.cancel_action):
             queue_menu.addAction(item)
         queue_menu.addSeparator()
@@ -535,9 +557,11 @@ class MainWindow(QMainWindow):
             widget.setEnabled(not running)
         self.clear_btn.setEnabled(not running)
         self.clear_action.setEnabled(not running and has_rows)
-        self.clear_done_action.setEnabled(not running and any(r.state == "done" for r in self.rows))
+        has_done = any(r.state == "done" for r in self.rows)
+        self.clear_done_action.setEnabled(not running and has_done)
         for row in self.rows:
             row.set_busy(running)
+            row.queue_has_done = has_done
 
         ready = (self.model_loaded and bool(pending) and bool(self.settings.output_formats)
                  and bool(self.settings.output_dir) and not running)
@@ -748,6 +772,7 @@ class MainWindow(QMainWindow):
             row = FileRow(path)
             row.remove_requested.connect(self.remove_row)
             row.reveal_requested.connect(lambda r: reveal_in_file_manager(r.output_file))
+            row.clear_done_requested.connect(self.clear_done_files)
             row.setProperty("first", not self.rows)
             self.rows_layout.insertWidget(self.rows_layout.count() - 1, row)
             self.rows.append(row)

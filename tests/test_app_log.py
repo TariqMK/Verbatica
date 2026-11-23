@@ -171,6 +171,7 @@ def test_report_a_problem_fills_in_only_version_and_os():
 
 def test_help_menu_and_settings_have_view_logs_and_report(tmp_path, monkeypatch):
     from test_app import make_window
+    monkeypatch.setattr(app, "USE_MENU_BAR", True)
     window = make_window(tmp_path)
     titles = [a.text() for m in window.menuBar().actions() for a in m.menu().actions()]
     assert "View Logs" in titles and "Report a Problem…" in titles

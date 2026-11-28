@@ -1,6 +1,8 @@
 """Tests for the main window: the queue, the Transcribe button's conditions, the Settings
 window, the update check and settings saved next to the app."""
 
+from pathlib import Path
+
 from PyQt6.QtCore import QMimeData, QPoint, QPointF, Qt, QUrl
 from PyQt6.QtGui import QDropEvent
 from PyQt6.QtWidgets import QMessageBox
@@ -136,7 +138,8 @@ def test_dropping_files_adds_them_to_the_queue(tmp_path):
     event = QDropEvent(QPointF(QPoint(10, 10)), Qt.DropAction.CopyAction, mime,
                        Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier)
     window.dropEvent(event)
-    assert window.files == [str(tmp_path / "talk.wav")]  # the folder is ignored
+    # The folder is ignored. Compare as paths: Qt gives "/" separators on Windows too.
+    assert [Path(f) for f in window.files] == [tmp_path / "talk.wav"]
 
 
 def test_a_batch_marks_rows_done_with_their_word_counts(tmp_path):
@@ -306,3 +309,20 @@ def test_right_click_removes_finished_files(tmp_path):
     assert item.isEnabled()
     item.trigger()
     assert [Path(r.path).name for r in window.rows] == ["c.mp3"]
+
+
+def test_splash_module_is_used_only_when_the_build_shows_a_splash(monkeypatch):
+    # PyInstaller bundles pyi_splash in every build because app.py imports it, but only builds made
+    # with --splash set _PYI_SPLASH_IPC. Importing it without that logs a warning and a traceback.
+    import sys
+    import types
+    closed = []
+    fake = types.ModuleType("pyi_splash")
+    fake.close = lambda: closed.append(True)
+    monkeypatch.setitem(sys.modules, "pyi_splash", fake)
+    monkeypatch.delenv("_PYI_SPLASH_IPC", raising=False)
+    app.close_splash()
+    assert closed == []
+    monkeypatch.setenv("_PYI_SPLASH_IPC", "0")
+    app.close_splash()
+    assert closed == [True]

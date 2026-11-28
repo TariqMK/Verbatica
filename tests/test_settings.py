@@ -49,10 +49,12 @@ def test_paths_inside_the_app_folder_are_stored_relative_and_survive_a_move(tmp_
 
 
 def test_old_home_folder_settings_are_carried_over_and_left_alone(tmp_path):
-    legacy = {"models_dir": "/old/models", "output_dir": "/old/out", "error_log_path": "/old/logs"}
+    # Absolute paths on this system: "/old/models" has no drive, so Windows reads it as "C:\old\models"
+    old = tmp_path / "old"
+    legacy = {"models_dir": str(old / "models"), "output_dir": str(old / "out"), "error_log_path": str(old / "logs")}
     store = make_store(tmp_path, legacy)
     s = store.load()
-    assert (s.models_dir, s.output_dir, s.error_log_dir) == ("/old/models", "/old/out", "/old/logs")
+    assert (s.models_dir, s.output_dir, s.error_log_dir) == (str(old / "models"), str(old / "out"), str(old / "logs"))
     store.save(s)
     assert json.loads(store.legacy_file.read_text()) == legacy  # old file not changed
 

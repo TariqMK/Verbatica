@@ -201,6 +201,10 @@ A source run shows the version `v0.0.0.dev0` and keeps its data in `Verbatica-da
 
 The tests use a fake model. They do not need a model download or a network connection. One test runs the real audio decoder when faster-whisper is installed.
 
+To check the real app from start to finish, run: `python scripts/check_e2e.py --sample <speech .wav> --expect <word>`
+
+It downloads the tiny model (75 MB) and transcribes copies of the sample in a new temporary folder. It checks the saved files, Stop, a broken file and the log. It needs a network connection. Leave out `--sample` to use a generated tone. The check then expects no words.
+
 </details>
 
 <details>

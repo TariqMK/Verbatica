@@ -1020,6 +1020,10 @@ def self_test() -> int:
 
 def close_splash():
     """Close the splash screen that Windows and Linux builds show while they unpack."""
+    # PyInstaller bundles pyi_splash in every build (macOS too), but only a build with a splash
+    # sets _PYI_SPLASH_IPC. Importing it without one logs a warning and a traceback.
+    if "_PYI_SPLASH_IPC" not in os.environ:
+        return
     try:
         import pyi_splash  # only exists inside a PyInstaller build made with --splash
     except ImportError:
